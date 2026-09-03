@@ -11,7 +11,6 @@
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
   <style>
-    /* (styles identiques aux précédents) */
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family:'Segoe UI',system-ui,sans-serif; background:#f0f2f5; }
     #map { height:100vh; width:100%; }
@@ -155,35 +154,27 @@
     let parcelleFilter = 'all';
 
     // ============================================================
-    // 4. TYPOLOGIE
+    // 4. TYPOLOGIE – couleurs et libellés (nettoyés)
     // ============================================================
     const TYPOLOGIE_COLORS = {
       'PRIVE': '#2e7d32',
       'COMMUNE': '#1565c0',
       'ETAT': '#f57f17',
-      'PROPRIETE PRIVEE': '#2e7d32',
-      'TERRE COUTUMIERE': '#6a1b9a',
-      'TERRES COUTUMIERES': '#6a1b9a',
-      'NON RENSEIGNE': '#9e9e9e',
-      'MIXTE': '#f57f17',
-      'PUBLIQUE': '#1565c0',
       'ETAT FRANCAIS': '#f57f17',
-      'NOUVELLE-CALEDONIE': '#e67e22',
-      'PROVINCE': '#2980b9'
+      'TERRE COUTUMIERE': '#6a1b9a',
+      'PUBLIQUE': '#1565c0',
+      'MIXTE': '#f57f17',
+      'NON RENSEIGNE': '#9e9e9e'
     };
     const TYPOLOGIE_LABELS = {
       'PRIVE': '🏠 Privé',
       'COMMUNE': '🏛️ Commune',
       'ETAT': '🏢 État',
-      'PROPRIETE PRIVEE': '🏠 Propriété privée',
-      'TERRE COUTUMIERE': '🌿 Terre coutumière',
-      'TERRES COUTUMIERES': '🌿 Terre coutumière',
-      'NON RENSEIGNE': '❓ Non renseigné',
-      'MIXTE': '🔀 Mixte',
-      'PUBLIQUE': '🏛️ Publique',
       'ETAT FRANCAIS': '🏢 État français',
-      'NOUVELLE-CALEDONIE': '🏛️ Nouvelle-Calédonie',
-      'PROVINCE': '🏛️ Province'
+      'TERRE COUTUMIERE': '🌿 Terre coutumière',
+      'PUBLIQUE': '🏛️ Publique',
+      'MIXTE': '🔀 Mixte',
+      'NON RENSEIGNE': '❓ Non renseigné'
     };
 
     // ============================================================
@@ -232,7 +223,7 @@
     }
 
     // ============================================================
-    // 8. RENDU PARCELLES (avec extraction du point représentatif)
+    // 8. RENDU PARCELLES (avec extraction du point et validation)
     // ============================================================
     function formatSurface(s) {
       if (!s) return '0 ha';
@@ -247,19 +238,18 @@
     function getParcelPoint(feature) {
       const geom = feature.geometry;
       if (!geom) return null;
+      let coords = null;
       if (geom.type === 'Point') {
-        const coords = geom.coordinates;
+        coords = geom.coordinates;
         if (!coords || coords.length < 2) return null;
         return { lat: coords[1], lng: coords[0] };
       } else if (geom.type === 'Polygon') {
-        // On prend le premier point du premier anneau externe
-        const coords = geom.coordinates[0];
-        if (!coords || coords.length === 0) return null;
-        const first = coords[0];
+        const ring = geom.coordinates[0];
+        if (!ring || ring.length === 0) return null;
+        const first = ring[0];
         if (!first || first.length < 2) return null;
         return { lat: first[1], lng: first[0] };
       } else if (geom.type === 'MultiPolygon') {
-        // On prend le premier polygone, premier anneau, premier point
         const poly = geom.coordinates[0];
         if (!poly || poly.length === 0) return null;
         const ring = poly[0];
@@ -302,6 +292,12 @@
         const point = getParcelPoint(f);
         if (!point) return;
         const { lat, lng } = point;
+
+        // Vérification stricte des coordonnées
+        if (typeof lat !== 'number' || typeof lng !== 'number' || !isFinite(lat) || !isFinite(lng)) {
+          console.warn('Coordonnées invalides pour une parcelle, ignorée', { lat, lng, id: f.id });
+          return;
+        }
 
         const rawTypo = f.properties.nature || f.properties.proprietaire_nature || f.properties.type || 'NON RENSEIGNE';
         const typo = rawTypo.toUpperCase();
