@@ -11,7 +11,7 @@
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
   <style>
-    /* (styles inchangés) */
+    /* (styles identiques aux précédents) */
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family:'Segoe UI',system-ui,sans-serif; background:#f0f2f5; }
     #map { height:100vh; width:100%; }
@@ -232,7 +232,7 @@
     }
 
     // ============================================================
-    // 8. RENDU PARCELLES
+    // 8. RENDU PARCELLES (avec extraction du point représentatif)
     // ============================================================
     function formatSurface(s) {
       if (!s) return '0 ha';
@@ -242,6 +242,33 @@
         return (ha + a/100 + ca/10000).toFixed(2) + ' ha';
       }
       return s;
+    }
+
+    function getParcelPoint(feature) {
+      const geom = feature.geometry;
+      if (!geom) return null;
+      if (geom.type === 'Point') {
+        const coords = geom.coordinates;
+        if (!coords || coords.length < 2) return null;
+        return { lat: coords[1], lng: coords[0] };
+      } else if (geom.type === 'Polygon') {
+        // On prend le premier point du premier anneau externe
+        const coords = geom.coordinates[0];
+        if (!coords || coords.length === 0) return null;
+        const first = coords[0];
+        if (!first || first.length < 2) return null;
+        return { lat: first[1], lng: first[0] };
+      } else if (geom.type === 'MultiPolygon') {
+        // On prend le premier polygone, premier anneau, premier point
+        const poly = geom.coordinates[0];
+        if (!poly || poly.length === 0) return null;
+        const ring = poly[0];
+        if (!ring || ring.length === 0) return null;
+        const first = ring[0];
+        if (!first || first.length < 2) return null;
+        return { lat: first[1], lng: first[0] };
+      }
+      return null;
     }
 
     function renderParcelles(geojson, filter) {
@@ -272,9 +299,9 @@
 
       const markers = [];
       filtered.forEach(f => {
-        const coords = f.geometry?.coordinates;
-        if (!coords || coords.length < 2) return;
-        const lat = coords[1], lng = coords[0];
+        const point = getParcelPoint(f);
+        if (!point) return;
+        const { lat, lng } = point;
 
         const rawTypo = f.properties.nature || f.properties.proprietaire_nature || f.properties.type || 'NON RENSEIGNE';
         const typo = rawTypo.toUpperCase();
@@ -342,9 +369,7 @@
         // Extraire les communes avec leurs codes et noms (robuste)
         const communesList = communes.features
           .map(f => {
-            // Essayer plusieurs clés pour le code INSEE
             const code = f.properties.code_com || f.properties.code_insee || f.properties.code || f.properties.commune_code;
-            // Essayer plusieurs clés pour le nom
             const nom = f.properties.nom_commune || f.properties.nom || f.properties.NAME || f.properties.commune || f.properties.ville;
             return { code, nom };
           })
@@ -353,8 +378,8 @@
 
         communesList.forEach(item => {
           const opt = document.createElement('option');
-          opt.value = item.code;   // code INSEE (ex: "97223")
-          opt.textContent = item.nom; // nom de la commune
+          opt.value = item.code;
+          opt.textContent = item.nom;
           select.appendChild(opt);
         });
 
