@@ -339,11 +339,13 @@
         const select = document.getElementById('communeSelect');
         select.innerHTML = '<option value="">Sélectionnez une commune</option>';
 
-        // 🟢 CORRECTION : utiliser code_com et nom_commune
+        // Extraire les communes avec leurs codes et noms (robuste)
         const communesList = communes.features
           .map(f => {
-            const code = f.properties.code_com || f.properties.commune || f.properties.code_insee || f.properties.code;
-            const nom = f.properties.nom_commune || f.properties.nom || f.properties.NAME;
+            // Essayer plusieurs clés pour le code INSEE
+            const code = f.properties.code_com || f.properties.code_insee || f.properties.code || f.properties.commune_code;
+            // Essayer plusieurs clés pour le nom
+            const nom = f.properties.nom_commune || f.properties.nom || f.properties.NAME || f.properties.commune || f.properties.ville;
             return { code, nom };
           })
           .filter(item => item.code && item.nom)
@@ -352,7 +354,7 @@
         communesList.forEach(item => {
           const opt = document.createElement('option');
           opt.value = item.code;   // code INSEE (ex: "97223")
-          opt.textContent = item.nom;
+          opt.textContent = item.nom; // nom de la commune
           select.appendChild(opt);
         });
 
