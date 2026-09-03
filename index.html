@@ -154,7 +154,7 @@
     let parcelleFilter = 'all';
 
     // ============================================================
-    // 4. TYPOLOGIE – couleurs et libellés (nettoyés)
+    // 4. TYPOLOGIE (nettoyée)
     // ============================================================
     const TYPOLOGIE_COLORS = {
       'PRIVE': '#2e7d32',
@@ -223,24 +223,13 @@
     }
 
     // ============================================================
-    // 8. RENDU PARCELLES (avec extraction du point et validation)
+    // 8. RENDU PARCELLES (universel)
     // ============================================================
-    function formatSurface(s) {
-      if (!s) return '0 ha';
-      const m = s.match(/(\d+)ha\s*(\d+)a\s*(\d+)ca/);
-      if (m) {
-        const ha = parseInt(m[1])||0, a = parseInt(m[2])||0, ca = parseInt(m[3])||0;
-        return (ha + a/100 + ca/10000).toFixed(2) + ' ha';
-      }
-      return s;
-    }
-
     function getParcelPoint(feature) {
       const geom = feature.geometry;
       if (!geom) return null;
-      let coords = null;
       if (geom.type === 'Point') {
-        coords = geom.coordinates;
+        const coords = geom.coordinates;
         if (!coords || coords.length < 2) return null;
         return { lat: coords[1], lng: coords[0] };
       } else if (geom.type === 'Polygon') {
@@ -259,6 +248,32 @@
         return { lat: first[1], lng: first[0] };
       }
       return null;
+    }
+
+    // Fonction de formatage de surface (supporte nombre en m² ou chaîne)
+    function formatSurface(value) {
+      if (value === undefined || value === null || value === '') return '0 ha';
+      if (typeof value === 'number') {
+        // Si c'est un nombre, on considère que c'est en mètres carrés (contenance)
+        return (value / 10000).toFixed(2) + ' ha';
+      }
+      if (typeof value === 'string') {
+        // Essayer de parser une chaîne du type "123ha 45a 67ca"
+        const m = value.match(/(\d+)ha\s*(\d+)a\s*(\d+)ca/);
+        if (m) {
+          const ha = parseInt(m[1]) || 0;
+          const a = parseInt(m[2]) || 0;
+          const ca = parseInt(m[3]) || 0;
+          return (ha + a/100 + ca/10000).toFixed(2) + ' ha';
+        }
+        // Sinon, essayer de convertir en nombre
+        const num = parseFloat(value);
+        if (!isNaN(num)) {
+          return (num / 10000).toFixed(2) + ' ha';
+        }
+        return value;
+      }
+      return '0 ha';
     }
 
     function renderParcelles(geojson, filter) {
@@ -293,12 +308,12 @@
         if (!point) return;
         const { lat, lng } = point;
 
-        // Vérification stricte des coordonnées
         if (typeof lat !== 'number' || typeof lng !== 'number' || !isFinite(lat) || !isFinite(lng)) {
-          console.warn('Coordonnées invalides pour une parcelle, ignorée', { lat, lng, id: f.id });
+          console.warn('Coordonnées invalides, parcelle ignorée', { lat, lng, id: f.id });
           return;
         }
 
+        // Typologie
         const rawTypo = f.properties.nature || f.properties.proprietaire_nature || f.properties.type || 'NON RENSEIGNE';
         const typo = rawTypo.toUpperCase();
         const color = TYPOLOGIE_COLORS[typo] || '#9e9e9e';
@@ -311,12 +326,19 @@
           iconAnchor: [6,6]
         });
 
+        // Récupération des attributs (avec fallback pour chaque département)
+        const commune = f.properties.commune || f.properties.commune_code || 'Inconnue';
+        const nic = f.properties.nic || f.properties.id || '—';
+        const numLot = f.properties.num_lot || f.properties.numero || f.properties.lot || '—';
+        const section = f.properties.section_cadastrale || f.properties.section || '—';
+        const surface = formatSurface(f.properties.surface_cadastrale ?? f.properties.contenance);
+
         const popupContent = `<div>
-          <div style="font-weight:700;font-size:1rem;color:#1a3b5d;">${f.properties.commune||'Inconnue'}</div>
-          <div class="popup-row"><span class="label">📍 NIC :</span> <span class="value">${f.properties.nic||'—'}</span></div>
-          <div class="popup-row"><span class="label">📋 Lot :</span> <span class="value">${f.properties.num_lot||'—'}</span></div>
-          <div class="popup-row"><span class="label">📐 Section :</span> <span class="value">${f.properties.section_cadastrale||'—'}</span></div>
-          <div class="popup-row"><span class="label">📏 Surface :</span> <span class="value">${formatSurface(f.properties.surface_cadastrale)}</span></div>
+          <div style="font-weight:700;font-size:1rem;color:#1a3b5d;">Commune ${commune}</div>
+          <div class="popup-row"><span class="label">📍 NIC :</span> <span class="value">${nic}</span></div>
+          <div class="popup-row"><span class="label">📋 Lot :</span> <span class="value">${numLot}</span></div>
+          <div class="popup-row"><span class="label">📐 Section :</span> <span class="value">${section}</span></div>
+          <div class="popup-row"><span class="label">📏 Surface :</span> <span class="value">${surface}</span></div>
           <div style="margin-top:4px;">
             <span class="badge-typologie" style="background:${color}22;color:${color};border:1px solid ${color};">
               ${label}
@@ -352,17 +374,14 @@
         document.getElementById('loading').style.display = 'flex';
         document.getElementById('error-msg').style.display = 'none';
 
-        // Charger les communes
         const url = `${COMMUNES_PATH}communes-${dep}.geojson`;
         const communes = await fetchJSON(url);
         if (!communes) throw new Error(`Fichier ${url} introuvable.`);
         renderCommunes(communes);
 
-        // Remplir le sélecteur de communes
         const select = document.getElementById('communeSelect');
         select.innerHTML = '<option value="">Sélectionnez une commune</option>';
 
-        // Extraire les communes avec leurs codes et noms (robuste)
         const communesList = communes.features
           .map(f => {
             const code = f.properties.code_com || f.properties.code_insee || f.properties.code || f.properties.commune_code;
@@ -379,10 +398,7 @@
           select.appendChild(opt);
         });
 
-        // 🔥 Force la sélection à la valeur vide (évite de garder une commune d'un autre département)
         select.value = '';
-
-        // Réinitialiser les parcelles
         if (parcelleCluster) { map.removeLayer(parcelleCluster); parcelleCluster = null; }
         document.getElementById('parcelleCount').textContent = 0;
         allParcelles = [];
@@ -395,7 +411,7 @@
     }
 
     // ============================================================
-    // 10. CHARGEMENT DES PARCELLES D'UNE COMMUNE (avec validation)
+    // 10. CHARGEMENT DES PARCELLES D'UNE COMMUNE
     // ============================================================
     async function loadParcellesForCommune(dep, codeCommune) {
       try {
@@ -406,9 +422,8 @@
           return;
         }
 
-        // 🔥 Validation : le code commune doit commencer par le numéro du département
         if (!codeCommune.startsWith(dep)) {
-          showError(`La commune sélectionnée (${codeCommune}) n'appartient pas au département ${dep}. Veuillez choisir une commune de ce département.`);
+          showError(`La commune sélectionnée (${codeCommune}) n'appartient pas au département ${dep}.`);
           document.getElementById('communeSelect').value = '';
           if (parcelleCluster) { map.removeLayer(parcelleCluster); parcelleCluster = null; }
           document.getElementById('parcelleCount').textContent = 0;
@@ -461,7 +476,7 @@
     });
 
     // ============================================================
-    // 12. INIT (département par défaut: 972)
+    // 12. INIT
     // ============================================================
     loadDepartment('972');
   </script>
