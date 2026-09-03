@@ -11,6 +11,7 @@
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
   <style>
+    /* (styles inchangés) */
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family:'Segoe UI',system-ui,sans-serif; background:#f0f2f5; }
     #map { height:100vh; width:100%; }
@@ -154,7 +155,7 @@
     let parcelleFilter = 'all';
 
     // ============================================================
-    // 4. TYPOLOGIE – couleurs et libellés
+    // 4. TYPOLOGIE
     // ============================================================
     const TYPOLOGIE_COLORS = {
       'PRIVE': '#2e7d32',
@@ -214,7 +215,7 @@
     }
 
     // ============================================================
-    // 7. RENDU COMMUNES (limites)
+    // 7. RENDU COMMUNES
     // ============================================================
     function renderCommunes(geojson) {
       if (communeLayer) map.removeLayer(communeLayer);
@@ -231,7 +232,7 @@
     }
 
     // ============================================================
-    // 8. RENDU PARCELLES (avec clustering)
+    // 8. RENDU PARCELLES
     // ============================================================
     function formatSurface(s) {
       if (!s) return '0 ha';
@@ -328,20 +329,20 @@
         document.getElementById('loading').style.display = 'flex';
         document.getElementById('error-msg').style.display = 'none';
 
-        // Charger les communes (GeoJSON)
+        // Charger les communes
         const url = `${COMMUNES_PATH}communes-${dep}.geojson`;
         const communes = await fetchJSON(url);
         if (!communes) throw new Error(`Fichier ${url} introuvable.`);
         renderCommunes(communes);
 
-        // Remplir le sélecteur de communes (valeur = code INSEE, texte = nom)
+        // Remplir le sélecteur de communes
         const select = document.getElementById('communeSelect');
         select.innerHTML = '<option value="">Sélectionnez une commune</option>';
 
-        // Extraire la liste des communes avec leurs codes
+        // 🟢 CORRECTION : utiliser code_com et nom_commune
         const communesList = communes.features
           .map(f => {
-            const code = f.properties.commune || f.properties.code_insee || f.properties.code;
+            const code = f.properties.code_com || f.properties.commune || f.properties.code_insee || f.properties.code;
             const nom = f.properties.nom_commune || f.properties.nom || f.properties.NAME;
             return { code, nom };
           })
@@ -355,7 +356,7 @@
           select.appendChild(opt);
         });
 
-        // Réinitialiser l'affichage des parcelles
+        // Réinitialiser les parcelles
         if (parcelleCluster) { map.removeLayer(parcelleCluster); parcelleCluster = null; }
         document.getElementById('parcelleCount').textContent = 0;
         allParcelles = [];
@@ -368,7 +369,7 @@
     }
 
     // ============================================================
-    // 10. CHARGEMENT DES PARCELLES D'UNE COMMUNE (par code INSEE)
+    // 10. CHARGEMENT DES PARCELLES D'UNE COMMUNE
     // ============================================================
     async function loadParcellesForCommune(dep, codeCommune) {
       try {
@@ -407,7 +408,7 @@
     });
 
     document.getElementById('communeSelect').addEventListener('change', function(e) {
-      const code = e.target.value;  // c'est le code INSEE
+      const code = e.target.value;
       const dep = document.getElementById('depSelect').value;
       if (code) {
         loadParcellesForCommune(dep, code);
