@@ -11,6 +11,7 @@
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
   <style>
+    /* (styles inchangés) */
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family:'Segoe UI',system-ui,sans-serif; background:#f0f2f5; }
     #map { height:100vh; width:100%; }
@@ -103,17 +104,19 @@
 
     <hr class="ctrl-divider" />
 
-    <label for="parcelleFilter">📌 Filtrer parcelles par typologie</label>
-    <select id="parcelleFilter">
-      <option value="all">Toutes les typologies</option>
-      <option value="PRIVE">🏠 Privé</option>
-      <option value="COMMUNE">🏛️ Commune</option>
-      <option value="ETAT">🏢 État</option>
-      <option value="TERRE COUTUMIERE">🌿 Terre coutumière</option>
-      <option value="NON RENSEIGNE">❓ Non renseigné</option>
-      <option value="MIXTE">🔀 Mixte</option>
-    </select>
-    <div class="ctrl-hint">Cliquez sur une parcelle pour voir ses infos</div>
+    <div id="filterGroup">
+      <label for="parcelleFilter">📌 Filtrer parcelles par typologie</label>
+      <select id="parcelleFilter">
+        <option value="all">Toutes les typologies</option>
+        <option value="PRIVE">🏠 Privé</option>
+        <option value="COMMUNE">🏛️ Commune</option>
+        <option value="ETAT">🏢 État</option>
+        <option value="TERRE COUTUMIERE">🌿 Terre coutumière</option>
+        <option value="NON RENSEIGNE">❓ Non renseigné</option>
+        <option value="MIXTE">🔀 Mixte</option>
+      </select>
+      <div class="ctrl-hint" id="filterHint">Cliquez sur une parcelle pour voir ses infos</div>
+    </div>
 
     <hr class="ctrl-divider" />
 
@@ -152,9 +155,10 @@
     let parcelleCluster = null;
     let allParcelles = [];
     let parcelleFilter = 'all';
+    let hasTypology = false; // Indique si les données contiennent un champ de typologie
 
     // ============================================================
-    // 4. TYPOLOGIE (nettoyée)
+    // 4. TYPOLOGIE
     // ============================================================
     const TYPOLOGIE_COLORS = {
       'PRIVE': '#2e7d32',
@@ -223,7 +227,7 @@
     }
 
     // ============================================================
-    // 8. RENDU PARCELLES (universel)
+    // 8. RENDU PARCELLES (avec détection automatique de typologie)
     // ============================================================
     function getParcelPoint(feature) {
       const geom = feature.geometry;
@@ -250,15 +254,12 @@
       return null;
     }
 
-    // Fonction de formatage de surface (supporte nombre en m² ou chaîne)
     function formatSurface(value) {
       if (value === undefined || value === null || value === '') return '0 ha';
       if (typeof value === 'number') {
-        // Si c'est un nombre, on considère que c'est en mètres carrés (contenance)
         return (value / 10000).toFixed(2) + ' ha';
       }
       if (typeof value === 'string') {
-        // Essayer de parser une chaîne du type "123ha 45a 67ca"
         const m = value.match(/(\d+)ha\s*(\d+)a\s*(\d+)ca/);
         if (m) {
           const ha = parseInt(m[1]) || 0;
@@ -266,7 +267,6 @@
           const ca = parseInt(m[3]) || 0;
           return (ha + a/100 + ca/10000).toFixed(2) + ' ha';
         }
-        // Sinon, essayer de convertir en nombre
         const num = parseFloat(value);
         if (!isNaN(num)) {
           return (num / 10000).toFixed(2) + ' ha';
@@ -281,7 +281,35 @@
       const features = geojson?.features || [];
       console.log(`📊 Parcelles chargées : ${features.length}`);
 
-      const filtered = filter === 'all'
+      // Détection de la présence d'un champ de typologie
+      let hasTypo = false;
+      for (const f of features) {
+        if (f.properties && (f.properties.nature || f.properties.proprietaire_nature || f.properties.type)) {
+          hasTypo = true;
+          break;
+        }
+      }
+      hasTypology = hasTypo;
+
+      // Mise à jour de l'affichage du filtre
+      const filterGroup = document.getElementById('filterGroup');
+      const filterHint = document.getElementById('filterHint');
+      if (!hasTypo) {
+        filterGroup.style.opacity = '0.5';
+        filterHint.textContent = 'Typologie non disponible pour ce département';
+        // On désactive le filtre en forçant "all"
+        if (filter !== 'all') {
+          document.getElementById('parcelleFilter').value = 'all';
+          filter = 'all';
+          parcelleFilter = 'all';
+        }
+      } else {
+        filterGroup.style.opacity = '1';
+        filterHint.textContent = 'Cliquez sur une parcelle pour voir ses infos';
+      }
+
+      // Application du filtre (si typologie présente)
+      const filtered = (filter === 'all' || !hasTypo)
         ? features
         : features.filter(f => {
             const typo = (f.properties.nature || f.properties.proprietaire_nature || f.properties.type || 'NON RENSEIGNE').toUpperCase();
@@ -313,7 +341,6 @@
           return;
         }
 
-        // Typologie
         const rawTypo = f.properties.nature || f.properties.proprietaire_nature || f.properties.type || 'NON RENSEIGNE';
         const typo = rawTypo.toUpperCase();
         const color = TYPOLOGIE_COLORS[typo] || '#9e9e9e';
@@ -326,7 +353,6 @@
           iconAnchor: [6,6]
         });
 
-        // Récupération des attributs (avec fallback pour chaque département)
         const commune = f.properties.commune || f.properties.commune_code || 'Inconnue';
         const nic = f.properties.nic || f.properties.id || '—';
         const numLot = f.properties.num_lot || f.properties.numero || f.properties.lot || '—';
@@ -367,7 +393,7 @@
     }
 
     // ============================================================
-    // 9. CHARGEMENT DU DÉPARTEMENT (communes + liste)
+    // 9. CHARGEMENT DU DÉPARTEMENT
     // ============================================================
     async function loadDepartment(dep) {
       try {
@@ -441,7 +467,10 @@
         if (!parcelles) throw new Error(`Fichier ${url} introuvable.`);
 
         allParcelles = parcelles.features || [];
-        renderParcelles(parcelles, parcelleFilter);
+        // On réinitialise le filtre à "all" pour éviter un état incohérent
+        document.getElementById('parcelleFilter').value = 'all';
+        parcelleFilter = 'all';
+        renderParcelles(parcelles, 'all');
 
         hideLoading();
       } catch (err) {
@@ -472,6 +501,12 @@
 
     document.getElementById('parcelleFilter').addEventListener('change', function(e) {
       parcelleFilter = e.target.value;
+      // Si la typologie n'est pas disponible, on force le filtre à "all"
+      if (!hasTypology) {
+        document.getElementById('parcelleFilter').value = 'all';
+        parcelleFilter = 'all';
+        return;
+      }
       renderParcelles({ features: allParcelles }, parcelleFilter);
     });
 
