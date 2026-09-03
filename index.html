@@ -379,6 +379,9 @@
           select.appendChild(opt);
         });
 
+        // 🔥 Force la sélection à la valeur vide (évite de garder une commune d'un autre département)
+        select.value = '';
+
         // Réinitialiser les parcelles
         if (parcelleCluster) { map.removeLayer(parcelleCluster); parcelleCluster = null; }
         document.getElementById('parcelleCount').textContent = 0;
@@ -392,11 +395,21 @@
     }
 
     // ============================================================
-    // 10. CHARGEMENT DES PARCELLES D'UNE COMMUNE
+    // 10. CHARGEMENT DES PARCELLES D'UNE COMMUNE (avec validation)
     // ============================================================
     async function loadParcellesForCommune(dep, codeCommune) {
       try {
         if (!codeCommune) {
+          if (parcelleCluster) { map.removeLayer(parcelleCluster); parcelleCluster = null; }
+          document.getElementById('parcelleCount').textContent = 0;
+          allParcelles = [];
+          return;
+        }
+
+        // 🔥 Validation : le code commune doit commencer par le numéro du département
+        if (!codeCommune.startsWith(dep)) {
+          showError(`La commune sélectionnée (${codeCommune}) n'appartient pas au département ${dep}. Veuillez choisir une commune de ce département.`);
+          document.getElementById('communeSelect').value = '';
           if (parcelleCluster) { map.removeLayer(parcelleCluster); parcelleCluster = null; }
           document.getElementById('parcelleCount').textContent = 0;
           allParcelles = [];
